@@ -25,8 +25,6 @@ export DINH_SLACK_ID="U08TVVC6PL5"
 export PHUONG_SLACK_ID="U08UAPSK14H"
 export VINH_SLACK_ID="U08TR09LSEP"
 export THY_SLACK_ID="U08TS1P3JMC"
-# export SLACK_TOKEN=xoxb-8934931706583-9181274909602-ohoQYRKnL61ZHatMyMEfwThd
-# export PR_ROOM="C09E15YGCES"
 
 # --- Configuration & Dependency Checks ---
 check_deps() {
