@@ -25,6 +25,7 @@ export DINH_SLACK_ID="U08TVVC6PL5"
 export PHUONG_SLACK_ID="U08UAPSK14H"
 export VINH_SLACK_ID="U08TR09LSEP"
 export THY_SLACK_ID="U08TS1P3JMC"
+export PR_ROOM="C09E15YGCES"
 
 # --- Configuration & Dependency Checks ---
 check_deps() {
@@ -42,43 +43,42 @@ check_deps() {
     fi
 }
 
-
 # Display help message
-ghh_help() {
+gk_help() {
   echo "Git & GitHub Helper Scripts"
   echo ""
   echo "Usage: $0 <command> [arguments...]"
   echo ""
   echo "Commands:"
-  echo "  prs [remote] [title]        Create a PR to the latest release branch."
   echo "  pr <base> [title]           Create a PR to a specific base branch."
+  echo "  prs [remote] [title]        Create a PR to the latest release branch (staging)."
   echo "  nb <branch> [from] [remote] Create a new branch from 'develop' (or [from])."
   echo "  nbs <branch> [remote]       Create a new branch from the latest release branch."
   echo "  nbh <branch> [from] [remote] Create a new branch from 'main' (or [from])."
-  echo "  approve <pr_url>            Approve a GitHub PR."
-  echo "  merge <pr_url>              Approve and merge a GitHub PR."
+  echo "  ap <pr_url>                 Approve a GitHub PR."
+  echo "  mg <pr_url>                 Approve and merge a GitHub PR."
   echo "  wf <pr_url>                 Interactively trigger a GitHub Action workflow for a PR."
-  echo "  slack <message>             Send a message to a Slack channel."
+  echo "  sl <message>                Send a message to a Slack channel."
   echo "  help, -h, --help            Show this help message."
   echo ""
-  echo "Note: For Slack integration, ensure SLACK_TOKEN and PR_ROOM are set in your environment."
+  echo "Note: For Slack integration, ensure SLACK_TOKEN, PR_ROOM, and user SLACK_IDs are set in your environment."
 }
 
 # Send a message to Slack
-ghh_slack() {
+gk_slack() {
   if [[ -z "$SLACK_TOKEN" ]]; then
-    echo "❌ SLACK_TOKEN not set. Cannot send notification." >&2
+    echo "❌ SLACK_TOKEN not set. export SLACK_TOKEN='xoxb-xxxx'"
     return 1
   fi
 
   if [[ $# -lt 1 ]]; then
-    echo "Usage: ghh_slack <message>" >&2
+    echo "Usage: gk_slack <message>"
     return 1
   fi
 
   echo "Sending message to $PR_ROOM: $*"
 
-  local channel="${PR_ROOM}"
+  local channel="$PR_ROOM"
   local message="$*"
 
   local response
@@ -90,13 +90,13 @@ ghh_slack() {
   if [[ "$(jq -r '.ok' <<<"$response")" == "true" ]]; then
     echo "✅ Sent to $channel: $message"
   else
-    echo "❌ Error sending to Slack: $(jq -r '.error' <<<"$response")" >&2
+    echo "❌ Error: $(jq -r '.error' <<<"$response")"
   fi
 }
 
 # Create pull request to the latest release branch
-ghh_prs() {
-  echo "ghh_prs $1 $2"
+gk_prs() {
+  echo "gk_prs $1 $2"
   echo "🔥 Start to create pull request"
   local remote="${1:-origin}"
   local title="$2"
@@ -109,13 +109,13 @@ ghh_prs() {
   fi
   echo "Latest release: $latest_release"
   echo "Create pull request with title: $title"
-  ghh_pr "release/v$latest_release" "$title"
+  gk_pr "release/v$latest_release" "$title"
   echo "✅ $1 Pull request created"
 }
 
 # Create a pull request
-ghh_pr() {
-  echo "ghh_pr $1 $2"
+gk_pr() {
+  echo "gk_pr $1 $2"
   echo "🔥 Start to create pull request"
   local base=${1:-release}
   local title="$2"
@@ -131,11 +131,6 @@ ghh_pr() {
 
   if [[ -n "$pr_url" ]]; then
     echo "✅ Pull request created: $pr_url 🎉"
-    if [[ -z "$SLACK_TOKEN" || -z "$PR_ROOM" ]]; then
-        echo "⚠️ SLACK_TOKEN or PR_ROOM not set. Skipping Slack notification."
-        return 0
-    fi
-
     local current_branch
     current_branch=$(git branch --show-current)
     local author
@@ -144,42 +139,42 @@ ghh_pr() {
     pr_number=$(echo "$pr_url" | grep -o '[0-9]\+$')
     local repo_name
     repo_name=$(basename "$(git rev-parse --show-toplevel)")
-    
+    # Create array of slack users for fzf selection
     local slack_users=(
-      "DINH:$DINH_SLACK_ID"
-      "PHUONG:$PHUONG_SLACK_ID"
+      "ĐỊNH:$DINH_SLACK_ID"
+      "PHƯƠNG:$PHUONG_SLACK_ID"
       "VINH:$VINH_SLACK_ID"
       "THY:$THY_SLACK_ID"
       "NONE:"
     )
     
+    # Use fzf to select user to mention with preview
     local selected_user
     selected_user=$(printf '%s\n' "${slack_users[@]}" | fzf --prompt="Select user to mention: " --height=7 --reverse --border)
     
     if [[ -n "$selected_user" && "$selected_user" != "NONE:" ]]; then
       local user_id="${selected_user#*:}"
-      ghh_slack "🚀 Pull request <$pr_url|$pr_number> created by *$author* in *$repo_name* \n> Branch: \`$current_branch\` to: \`$base\` <@$user_id>"
+      gk_slack "🚀 Pull request <$pr_url|$pr_number> created by *$author* in \`*$repo_name*\` \n> Branch: \`$current_branch\` to: \`$base\` <@$user_id>"
     else
-      ghh_slack "🚀 Pull request <$pr_url|$pr_number> created by *$author* in *$repo_name* \n> Branch: \`$current_branch\` to: \`$base\`"
+      gk_slack "🚀 Pull request <$pr_url|$pr_number> created by *$author* in \`*$repo_name*\` \n> Branch: \`$current_branch\` to: \`$base\`"
     fi
   else
-    echo "❌ Failed to create pull request." >&2
+    echo "❌ Failed to create pull request."
     return 1
   fi
 }
 
-
 # Create new branch
-ghh_nb() {
-  echo "ghh_nb $1 $2 $3"
+gk_nb() {
+  echo "gk_nb $1 $2 $3"
   echo "🔥 Start to create new branch"
   git fetch "${3:-origin}" && git checkout -b "$1" "${3:-origin}/${2:-develop}" && git push -u "${3:-origin}" "$1"
   echo "✅ $1 New branch created from develop 🎉"
 }
 
 # Create new branch from staging
-ghh_nbs() {
-  echo "ghh_nbs $1 $2"
+gk_nbs() {
+  echo "gk_nbs $1 $2"
   echo "🔥 Start to create new branch from staging"
   local remote="${2:-origin}"
   latest_release=$(git branch -r | grep 'origin/release/v' | sed 's|origin/release/v||' | sort -V | tail -n1 | awk '{$1=$1;print}')
@@ -187,20 +182,20 @@ ghh_nbs() {
 
   git fetch "$remote" || return 1
   echo "Fetch remote: $remote"
-  ghh_nb "$1" "release/v$latest_release" "$remote"
+  gk_nb "$1" "release/v$latest_release" "$remote"
   echo "✅ $1 Branch created from staging 🎉"
 }
 
 # Create new hotfix branch
-ghh_nbh() {
-  echo "ghh_nbh $1 $2 $3"
+gk_nbh() {
+  echo "gk_nbh $1 $2 $3"
   echo "🔥 Start to create new branch"
   git fetch "${3:-origin}" && git checkout -b "$1" "${3:-origin}/${2:-main}" && git push -u "${3:-origin}" "$1"
   echo "✅ $1 New branch hotfix created 🎉"
 }
 
 # Approve a PR
-ghh_approve() {
+gk_approve() {
   url=$1
   echo "🔥 Approving PR: $url"
 
@@ -212,7 +207,7 @@ ghh_approve() {
 }
 
 # Approve and merge a PR
-ghh_merge() {
+gk_merge() {
   url=$1
   echo "🔥 Approving PR: $url"
 
@@ -225,11 +220,19 @@ ghh_merge() {
 }
 
 # List and trigger a workflow for a PR
-ghh_wf() {
+gk_wf() {
   url=$1
 
+  # Check if a URL is provided
   if [ -z "$url" ]; then
-    echo "Usage: ghh_wf <github_pr_url>" >&2
+    echo "Usage: gk_wf <github_pr_url>"
+    return 1
+  fi
+
+  # Check for fzf dependency
+  if ! command -v fzf &> /dev/null; then
+    echo "❌ fzf is not installed. Please install it for interactive selection."
+    echo "   On macOS, you can run: brew install fzf"
     return 1
   fi
 
@@ -237,8 +240,10 @@ ghh_wf() {
   repo=$(echo "$url" | awk -F/ '{print $5}')
   pr_number=$(echo "$url" | awk -F/ '{print $7}')
 
+  # Validate extracted parts
   if [ -z "$owner" ] || [ -z "$repo" ] || [ -z "$pr_number" ]; then
-    echo "❌ Invalid GitHub PR URL provided." >&2
+    echo "❌ Invalid GitHub PR URL provided."
+    echo "Expected format: https://github.com/owner/repo/pull/123"
     return 1
   fi
 
@@ -246,31 +251,36 @@ ghh_wf() {
   echo "repo: $repo"
   echo "pr_number: $pr_number"
 
-  branch=$(gh pr view "$pr_number" --repo "$owner/$repo" --json headRefName --jq '.headRefName')
+  # Get branch name of the PR
+  branch=develop
   if [[ -z "$branch" ]]; then
-    echo "❌ Could not determine branch for PR #$pr_number. Is the PR valid and do you have access?" >&2
+    echo "❌ Could not determine branch for PR #$pr_number. Is the PR valid and do you have access?"
     return 1
   fi
 
   echo "🔍 Checking workflows on branch '$branch' of '$owner/$repo'..."
 
-  workflows=$(gh api "repos/$owner/$repo/contents/.github/workflows?ref=$branch" --jq '.[].name' 2>/dev/null)
+  # Get list of workflows
+  workflows=$(gh api "repos/$owner/$repo/contents/.github/workflows?ref=$branch" \
+    --jq '.[].name' 2>/dev/null)
 
   if [[ -z "$workflows" ]]; then
-      echo "❌ No workflows found on branch '$branch'" >&2
+      echo "❌ No workflows found on branch '$branch'"
       return 1
   fi
 
+  # Use fzf for interactive selection
   workflow_to_run=$(echo "$workflows" | fzf --prompt="Please select a workflow to trigger > " --height=40% --layout=reverse)
 
+  # Check if a workflow was selected (fzf returns empty if user cancels)
   if [[ -n "$workflow_to_run" ]]; then
       echo "🚀 Triggering workflow '$workflow_to_run' on branch '$branch'..."
       gh workflow run "$workflow_to_run" --ref "$branch" --repo "$owner/$repo"
   else
       echo "No workflow selected. Aborting."
+      return 1
   fi
 }
-
 
 # --- Main Command Router ---
 main() {
@@ -279,7 +289,7 @@ main() {
 
     # If no command is provided, show help and exit.
     if [ -z "$1" ]; then
-        ghh_help
+        gk_help
         exit 0
     fi
 
@@ -288,39 +298,39 @@ main() {
 
     case "$COMMAND" in
         prs)
-            ghh_prs "$@"
+            gk_prs "$@"
             ;;
         pr)
-            ghh_pr "$@"
+            gk_pr "$@"
             ;;
-        slack)
-            ghh_slack "$@"
+        sl|slack)
+            gk_slack "$@"
             ;;
         nb)
-            ghh_nb "$@"
+            gk_nb "$@"
             ;;
         nbs)
-            ghh_nbs "$@"
+            gk_nbs "$@"
             ;;
         nbh)
-            ghh_nbh "$@"
+            gk_nbh "$@"
             ;;
-        approve)
-            ghh_approve "$@"
+        ap|approve)
+            gk_approve "$@"
             ;;
-        merge)
-            ghh_merge "$@"
+        mg|merge)
+            gk_merge "$@"
             ;;
         wf)
-            ghh_wf "$@"
+            gk_wf "$@"
             ;;
         help|-h|--help)
-            ghh_help
+            gk_help
             ;;
         *)
             echo "❌ Error: Unknown command '$COMMAND'" >&2
             echo ""
-            ghh_help
+            gk_help
             exit 1
             ;;
     esac
