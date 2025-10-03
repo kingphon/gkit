@@ -56,7 +56,7 @@ gk_help() {
   echo "  nbs <branch> [remote]       Create a new branch from the latest release branch."
   echo "  nbh <branch> [from] [remote] Create a new branch from 'main' (or [from])."
   echo "  ap <pr_url>                 Approve a GitHub PR."
-  echo "  mg <pr_url>                 Approve and merge a GitHub PR."
+  echo "  mg <pr_url>                 Approve and merge a GitHub PR (non-interactive, with optional workflow trigger)."
   echo "  wf <pr_url>                 Interactively trigger a GitHub Action workflow for a PR."
   echo "  sl <message>                Send a message to a Slack channel."
   echo "  help, -h, --help            Show this help message."
@@ -154,9 +154,9 @@ gk_pr() {
     
     if [[ -n "$selected_user" && "$selected_user" != "NONE:" ]]; then
       local user_id="${selected_user#*:}"
-      gk_slack "🚀 Pull request <$pr_url|$pr_number> created by *$author* in \`*$repo_name*\` \n> Branch: \`$current_branch\` to: \`$base\` <@$user_id>"
+      gk_slack "🚀 Pull request <$pr_url|$pr_number> created by *$author* in \`$repo_name\` \n> Branch: \`$current_branch\` to: \`$base\` <@$user_id> \n\n💬 Please react after you approved or merged this PR"
     else
-      gk_slack "🚀 Pull request <$pr_url|$pr_number> created by *$author* in \`*$repo_name*\` \n> Branch: \`$current_branch\` to: \`$base\`"
+      gk_slack "🚀 Pull request <$pr_url|$pr_number> created by *$author* in \`$repo_name\` \n> Branch: \`$current_branch\` to: \`$base\` \n\n💬 Please react after you approved or merged this PR"
     fi
   else
     echo "❌ Failed to create pull request."
@@ -215,8 +215,22 @@ gk_merge() {
   repo=$(echo "$url" | awk -F/ '{print $4 "/" $5}')
 
   gh pr review "$pr_number" --approve --repo "$repo"
-  gh pr merge "$pr_number" --repo "$repo"
+  
+  # Merge with explicit options to avoid interactive prompts
+  gh pr merge "$pr_number" --repo "$repo" --merge
+  
   echo "✅ PR for $url approved and merged 🎉"
+  
+  # Ask if user wants to run a workflow
+  echo ""
+  read -p "🚀 Do you want to run a workflow? (y/N): " -n 1 -r
+  echo ""
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "🔥 Starting workflow selection..."
+    gk_wf "$url"
+  else
+    echo "⏭️ Skipping workflow execution"
+  fi
 }
 
 # List and trigger a workflow for a PR
