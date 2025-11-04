@@ -121,6 +121,44 @@ gk_pr() {
   local title="$2"
   local pr_url
 
+  # If base is develop, create a new branch from origin/develop, merge current branch into it,
+  # allow user to resolve conflicts, then push and proceed to create PR from that new branch.
+  if [[ "$base" == "develop" ]]; then
+    local source_branch
+    source_branch=$(git branch --show-current)
+    local timestamp
+    timestamp=$(date +%Y%m%d%H%M%S)
+    local merge_branch
+    merge_branch="${source_branch}-to-develop-${timestamp}"
+
+    echo "🌱 Preparing integration branch: $merge_branch (from origin/develop)"
+    git fetch origin
+    git checkout -b "$merge_branch" origin/develop
+
+    echo "🔀 Merging '$source_branch' into '$merge_branch'"
+    set +e
+    git merge --no-ff --no-edit "$source_branch"
+    merge_exit=$?
+    set -e
+
+    if [[ $merge_exit -ne 0 ]]; then
+      echo "⚠️ Merge conflicts detected. Please resolve them in another terminal/editor."
+      echo "   After resolving, stage the changes and commit, then return here."
+      # Wait until there are no unmerged files
+      while [[ -n "$(git diff --name-only --diff-filter=U)" ]]; do
+        read -r -p "⏳ Conflicts still present. Press Enter to re-check once resolved..." _
+      done
+      # Try to complete the merge if still in progress (ignore if not)
+      set +e
+      git merge --continue 2>/dev/null
+      set -e
+      echo "✅ Conflicts resolved. Continuing..."
+    fi
+
+    echo "📤 Pushing integration branch to origin: $merge_branch"
+    git push -u origin "$merge_branch"
+  fi
+
   if [[ -n "$title" ]]; then
     echo "🔥 Create pull request with title: $title"
     pr_url=$(gh pr create --base "$base" --title "$title")
@@ -157,6 +195,19 @@ gk_pr() {
       gk_slack "🚀 Pull request <$pr_url|$pr_number> created by *$author* in \`$repo_name\` \n> Branch: \`$current_branch\` to: \`$base\` <@$user_id> \n\n💬 Please react after you approved or merged this PR"
     else
       gk_slack "🚀 Pull request <$pr_url|$pr_number> created by *$author* in \`$repo_name\` \n> Branch: \`$current_branch\` to: \`$base\` \n\n💬 Please react after you approved or merged this PR"
+    fi
+
+    # If destination (base) branch is develop, ask to run a workflow
+    if [[ "$base" == "develop" ]]; then
+      echo ""
+      read -p "🚀 Do you want to run a workflow? (y/N): " -n 1 -r
+      echo ""
+      if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "🔥 Starting workflow selection..."
+        gk_wf "$pr_url"
+      else
+        echo "⏭️ Skipping workflow execution"
+      fi
     fi
   else
     echo "❌ Failed to create pull request."
