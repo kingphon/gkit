@@ -120,9 +120,12 @@ gk_pr() {
   local base=${1:-release}
   local title="$2"
   local pr_url
+  local pr_head_branch=""
+  local return_to_branch=""
 
-  # If base is develop, create a new branch from origin/develop, merge current branch into it,
-  # allow user to resolve conflicts, then push and proceed to create PR from that new branch.
+  # If base is develop, create an integration branch from origin/develop,
+  # merge the current branch into it, allow conflict resolution, push it,
+  # and create the PR from that integration branch. Do not touch the source branch.
   if [[ "$base" == "develop" ]]; then
     local source_branch
     source_branch=$(git branch --show-current)
@@ -153,18 +156,31 @@ gk_pr() {
       git merge --continue 2>/dev/null
       set -e
       echo "✅ Conflicts resolved. Continuing..."
+      echo "📤 Pushing integration branch to origin: $merge_branch"
+      git push -u origin "$merge_branch"
+      pr_head_branch="$merge_branch"
+      return_to_branch="$source_branch"
+    else
+      echo "✅ No conflicts with develop. Using source branch directly for PR."
+      git checkout "$source_branch"
+      git branch -D "$merge_branch"
+      echo "📤 Ensuring branch '$source_branch' is pushed to origin"
+      git push -u origin "$source_branch"
     fi
+  fi
 
-    echo "📤 Pushing integration branch to origin: $merge_branch"
-    git push -u origin "$merge_branch"
+  # Build optional --head arg when using an integration branch
+  local gh_head_args=()
+  if [[ -n "$pr_head_branch" ]]; then
+    gh_head_args+=(--head "$pr_head_branch")
   fi
 
   if [[ -n "$title" ]]; then
     echo "🔥 Create pull request with title: $title"
-    pr_url=$(gh pr create --base "$base" --title "$title")
+    pr_url=$(gh pr create --base "$base" "${gh_head_args[@]}" --title "$title")
   else
     echo "🔥 Create pull request with fill"
-    pr_url=$(gh pr create --base "$base" --fill)
+    pr_url=$(gh pr create --base "$base" "${gh_head_args[@]}" --fill)
   fi
 
   if [[ -n "$pr_url" ]]; then
@@ -199,7 +215,16 @@ gk_pr() {
 
   else
     echo "❌ Failed to create pull request."
+    if [[ -n "$return_to_branch" ]]; then
+      echo "↩️ Switching back to source branch: $return_to_branch"
+      git checkout "$return_to_branch"
+    fi
     return 1
+  fi
+
+  if [[ -n "$return_to_branch" ]]; then
+    echo "↩️ Switching back to source branch: $return_to_branch"
+    git checkout "$return_to_branch"
   fi
 }
 
