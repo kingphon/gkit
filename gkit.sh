@@ -197,18 +197,6 @@ gk_pr() {
       gk_slack "🚀 Pull request <$pr_url|$pr_number> created by *$author* in \`$repo_name\` \n> Branch: \`$current_branch\` to: \`$base\` \n\n💬 Please react after you approved or merged this PR"
     fi
 
-    # If destination (base) branch is develop, ask to run a workflow
-    if [[ "$base" == "develop" ]]; then
-      echo ""
-      read -p "🚀 Do you want to run a workflow? (y/N): " -n 1 -r
-      echo ""
-      if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "🔥 Starting workflow selection..."
-        gk_wf "$pr_url"
-      else
-        echo "⏭️ Skipping workflow execution"
-      fi
-    fi
   else
     echo "❌ Failed to create pull request."
     return 1
@@ -271,16 +259,19 @@ gk_merge() {
   gh pr merge "$pr_number" --repo "$repo" --merge
   
   echo "✅ PR for $url approved and merged 🎉"
-  
-  # Ask if user wants to run a workflow
-  echo ""
-  read -p "🚀 Do you want to run a workflow? (y/N): " -n 1 -r
-  echo ""
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "🔥 Starting workflow selection..."
-    gk_wf "$url"
-  else
-    echo "⏭️ Skipping workflow execution"
+
+  # Check PR base branch; only ask to run workflow if base is 'develop'
+  base_branch=$(gh pr view "$pr_number" --repo "$repo" --json baseRefName --jq .baseRefName 2>/dev/null || echo "")
+  if [[ "$base_branch" == "develop" ]]; then
+    echo ""
+    read -p "🚀 Do you want to run a workflow? (y/N): " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      echo "🔥 Starting workflow selection..."
+      gk_wf "$url"
+    else
+      echo "⏭️ Skipping workflow execution"
+    fi
   fi
 }
 
