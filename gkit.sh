@@ -169,6 +169,52 @@ gk_pr() {
     fi
   fi
 
+  # If base is release/staging, create an integration branch from origin/release/staging,
+  # merge the current branch into it, allow conflict resolution, push it,
+  # and create the PR from that integration branch. Do not touch the source branch.
+  if [[ "$base" == "release/staging" ]]; then
+    local source_branch
+    source_branch=$(git branch --show-current)
+    local timestamp
+    timestamp=$(date +%Y%m%d%H%M%S)
+    local merge_branch
+    merge_branch="${source_branch}-to-release-staging-${timestamp}"
+
+    echo "🌱 Preparing integration branch: $merge_branch (from origin/release/staging)"
+    git fetch origin
+    git checkout -b "$merge_branch" origin/release/staging
+
+    echo "🔀 Merging '$source_branch' into '$merge_branch'"
+    set +e
+    git merge --no-ff --no-edit "$source_branch"
+    merge_exit=$?
+    set -e
+
+    if [[ $merge_exit -ne 0 ]]; then
+      echo "⚠️ Merge conflicts detected. Please resolve them in another terminal/editor."
+      echo "   After resolving, stage the changes and commit, then return here."
+      # Wait until there are no unmerged files
+      while [[ -n "$(git diff --name-only --diff-filter=U)" ]]; do
+        read -r -p "⏳ Conflicts still present. Press Enter to re-check once resolved..." _
+      done
+      # Try to complete the merge if still in progress (ignore if not)
+      set +e
+      git merge --continue 2>/dev/null
+      set -e
+      echo "✅ Conflicts resolved. Continuing..."
+      echo "📤 Pushing integration branch to origin: $merge_branch"
+      git push -u origin "$merge_branch"
+      pr_head_branch="$merge_branch"
+      return_to_branch="$source_branch"
+    else
+      echo "✅ No conflicts with release/staging. Using source branch directly for PR."
+      git checkout "$source_branch"
+      git branch -D "$merge_branch"
+      echo "📤 Ensuring branch '$source_branch' is pushed to origin"
+      git push -u origin "$source_branch"
+    fi
+  fi
+
   # Build optional --head arg when using an integration branch
   local gh_head_args=()
   if [[ -n "$pr_head_branch" ]]; then
